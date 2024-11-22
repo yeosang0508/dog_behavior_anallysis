@@ -1,0 +1,20 @@
+# TensorFlow 설치
+tensorflow
+
+# gdown 설치 (Google Drive에서 파일 다운로드를 위한 패키지)
+gdown
+
+# numpy 설치 (수학 연산 라이브러리)
+numpy
+
+# scikit-learn 설치 (머신러닝 라이브러리)
+scikit-learn
+
+# Python Imaging Library (Pillow) 설치
+Pillow
+
+# opencv-python 설치 (컴퓨터 비전 및 이미지 처리를 위한 라이브러리)
+opencv-python
+
+# matplotlib 설치 (데이터 시각화 라이브러리, 그래프나 차트 형태로 표현하는 데 사용)
+matplotlib
