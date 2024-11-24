@@ -81,3 +81,6 @@ data/csv_file
 ### 훈련 시킨 데이터 제외 ###
 models
 
+
+HRNet-Image-Classification
+video_test
