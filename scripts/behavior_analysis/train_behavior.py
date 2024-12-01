@@ -17,7 +17,7 @@ config = Config()
 # ----- 훈련 함수 -----
 def train_unified_model(train_loader, val_loader, config):
     device = config.device
-    model = UnifiedModel3DCNN(  # 3D CNN 기반 UnifiedModel
+    model = UnifiedModel3DCNN(
         in_channels=2,
         num_joints=config.num_joints,
         num_classes=config.num_classes,
@@ -30,6 +30,14 @@ def train_unified_model(train_loader, val_loader, config):
 
     train_losses, val_losses = [], []
     train_accuracies, val_accuracies = [], []
+
+    feature_maps = []  # 중간 출력 저장
+
+    def hook_fn(module, input, output):
+        feature_maps.append(output)
+
+    # Hook 등록 (3D CNN 마지막 Conv3D 레이어)
+    model.dynamic_feature_extractor[3].register_forward_hook(hook_fn)
 
     for epoch in range(config.num_epochs):
         model.train()
@@ -64,7 +72,7 @@ def train_unified_model(train_loader, val_loader, config):
     model_save_path = os.path.join(config.models_dir, "stgcn_behavior.pth")
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
-    return model, train_losses, val_losses, train_accuracies, val_accuracies
+    return model, train_losses, val_losses, train_accuracies, val_accuracies, feature_maps
 
 
 # ----- 평가 함수 -----
@@ -78,6 +86,18 @@ def evaluate_unified_model(loader, model, criterion, device):
             loss += criterion(outputs, labels).item()
             correct += (outputs.argmax(1) == labels).sum().item()
     return loss / len(loader), correct
+
+
+# ----- 중간 출력 시각화 -----
+def visualize_feature_maps(feature_maps):
+    feature_map = feature_maps[0][0, :, 0, :, :].cpu().detach().numpy()  # 첫 배치의 첫 번째 프레임
+    plt.figure(figsize=(20, 10))
+    for i in range(min(feature_map.shape[0], 8)):  # 첫 8개 채널만 표시
+        plt.subplot(2, 4, i + 1)
+        plt.imshow(feature_map[i], cmap='viridis')
+        plt.title(f'Channel {i}')
+        plt.axis('off')
+    plt.show()
 
 
 # ----- 학습 결과 시각화 -----
@@ -119,7 +139,12 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_data, batch_size=config.batch_size, shuffle=False)
 
     # 모델 학습
-    model, train_losses, val_losses, train_accuracies, val_accuracies = train_unified_model(train_loader, val_loader, config)
+    model, train_losses, val_losses, train_accuracies, val_accuracies, feature_maps = train_unified_model(
+        train_loader, val_loader, config
+    )
 
     # 학습 결과 시각화
     plot_training_results(train_losses, val_losses, train_accuracies, val_accuracies)
+
+    # 중간 출력 시각화
+    visualize_feature_maps(feature_maps)

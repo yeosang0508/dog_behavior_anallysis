@@ -39,6 +39,8 @@ class UnifiedModel3DCNN(nn.Module):
         # 최종 출력 계층
         self.output_layer = nn.Linear(hidden_size, num_classes)
 
+        
+
     def forward(self, skeletons, adjacency_matrix):
         # STGCN 처리
         x = torch.einsum("bctj,jk->bctk", skeletons, adjacency_matrix)
@@ -63,3 +65,5 @@ class UnifiedModel3DCNN(nn.Module):
         fused_output = self.fusion_layer(fused_features)
 
         return self.output_layer(fused_output)
+    
+STGCN = UnifiedModel3DCNN

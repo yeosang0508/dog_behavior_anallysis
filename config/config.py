@@ -36,6 +36,7 @@ class Config:
                  sigma: float = 3.0,
                  num_joints: int = 15,
                  num_frames: int = 30,
+                 hidden_size = 64,
                  batch_size: int = 16,
                  random_seed: int = 2021,
                  test_ratio: float = 0.1,
@@ -50,7 +51,7 @@ class Config:
                  train_csv=TRAIN_CSV,
                  val_csv=VAL_CSV,
                  test_csv=TEST_CSV):
-
+                 
 
 
         # CSV 파일 경로를 속성으로 설정
@@ -72,6 +73,7 @@ class Config:
         self.loss_type = loss_type
         self.num_joints = num_joints
         self.num_frames = num_frames
+        self.hidden_size = hidden_size
         self.batch_size = batch_size
         self.test_ratio = test_ratio
         self.init_training = init_training
@@ -85,7 +87,7 @@ class Config:
         self.post_processing = post_processing
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.video_path = "video_test\stand.mp4" # 테스트할 영상 파일 기본 경로    
+        self.video_path = "video_test\8.mp4" # 테스트할 영상 파일 기본 경로    
 
         # 모델 저장 디렉토리
         self.models_dir = os.path.join(os.getcwd(), 'models')

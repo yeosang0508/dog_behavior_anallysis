@@ -91,9 +91,12 @@ dog_behavior_model.keras
 
 # 특정 디렉토리 무시
 large_files/
+static
 
 # 모든 .keras 파일 무시
 *.keras
 
 # 특정 파일 무시 해제 (예외 규칙)
 !important_model.keras
+
+
