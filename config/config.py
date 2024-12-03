@@ -106,19 +106,21 @@ class Config:
         }
 
         self.behavior_classes = {
-            0: '몸 낮추기',         # bodylower
-            1: '몸 긁기',           # bodyscratch
-            2: '몸 흔들기',         # bodyshake
-            3: '앞발 들기',         # feetup
-            4: '한쪽 발 들기',      # footup
-            5: '고개 돌리기',       # heading
-            6: '누워 있기',         # lying
-            7: '마운팅',            # mounting
-            8: '앉아 있기',         # sit
-            9: '꼬리 흔들기',       # tailing
-            10: '돌아보기',         # turn
-            11: '걷거나 뛰기'       # walkrun
+            0: '몸 낮추기 - 방어적인 자세를 취하는 것처럼 보입니다.',
+            1: '몸 긁기 - 반려견이 가려운 곳을 긁고 있어요.',
+            2: '몸 흔들기 - 몸에 물기가 있을 때 흔드는 동작입니다.',
+            3: '앞발 들기 - 주의 깊게 무언가를 관찰하고 있어요.',
+            4: '한쪽 발 들기 - 불편하거나 흥미를 느끼는 동작일 수 있습니다.',
+            5: '고개 돌리기 - 주변 상황을 살피고 있는 동작입니다.',
+            6: '누워 있기 - 편안하거나 휴식을 취하는 모습이에요.',
+            7: '마운팅 - 흥분 상태나 장난치는 행동일 수 있습니다.',
+            8: '앉아 있기 - 반려견이 안정된 상태로 보입니다.',
+            9: '꼬리 흔들기 - 기분이 좋거나 사람에게 관심을 보이는 모습이에요.',
+            10: '돌아보기 - 주변 환경이나 사람을 확인하는 동작입니다.',
+            11: '걷거나 뛰기 - 반려견이 활기차게 움직이고 있어요.'
         }
+
+    
 
         # 관절 연결 정보 (pair-wise connection)
         self.joint_pair = [
@@ -163,5 +165,8 @@ class Config:
         print(f"Number of unique classes (num_classes): {unique_classes}")
         return unique_classes
     
+    def get_behavior_description(self, behavior_class):
+        """행동 클래스에 대한 설명을 반환합니다."""
+        return self.behavior_classes.get(behavior_class, "알 수 없는 행동")
 # 인스턴스 생성
 config = Config()

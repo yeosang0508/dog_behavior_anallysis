@@ -99,4 +99,5 @@ static
 # 특정 파일 무시 해제 (예외 규칙)
 !important_model.keras
 
-
+sam2
+uploaded_videos

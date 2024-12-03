@@ -18,8 +18,10 @@ config = Config()
 
 # Flask 애플리케이션 초기화
 app = Flask(__name__)
-UPLOAD_FOLDER = 'static/uploaded_videos/'
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../../uploaded_videos')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 # 모델 초기화
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,11 +87,13 @@ def analyze_video():
         frames = process_video(file_path)
         predicted_label = predict_behavior(frames)
 
+        description = config.get_behavior_description(predicted_label)
+
         return jsonify({
             "message": "분석 성공",
             "predicted_label": predicted_label,
-            "result": f"예측된 행동 클래스는 {predicted_label}입니다.",
-            "video_path": file_path
+            "result": description,
+            "video_path": f"/uploaded_videos/{file.filename}"
         }), 200
     except Exception as e:
         return jsonify({"error": f"서버 오류: {str(e)}"}), 500
