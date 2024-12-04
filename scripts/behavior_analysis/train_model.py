@@ -52,7 +52,7 @@ def sample_behavior_data(csv_path, behavior_classes):
     return pd.concat(sampled_data, ignore_index=True)
 
 # 2. 이미지 로드 및 전처리 함수
-def load_and_preprocess_image(filepath, img_size=(224, 224)):
+def load_and_preprocess_image(filepath, img_size=(128, 128)):
     """이미지를 로드하고 전처리합니다."""
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"이미지 파일이 없습니다: {filepath}")
@@ -64,7 +64,7 @@ def load_and_preprocess_image(filepath, img_size=(224, 224)):
 # 3. ResNet 기반 모델 생성
 def create_resnet_model(output_shape):
     """ResNet50 기반 모델 생성"""
-    base_model = ResNet50(weights="imagenet", include_top=False, input_shape=(224, 224, 3))
+    base_model = ResNet50(weights="imagenet", include_top=False, input_shape=(128, 128, 3))
     base_model.trainable = True
     for layer in base_model.layers[:140]:  # 일부 레이어 동결
         layer.trainable = False
@@ -81,7 +81,7 @@ def create_resnet_model(output_shape):
 if __name__ == "__main__":
     # CSV 경로 설정
     csv_path = 'data/csv_file/train_numeric_updated.csv'
-    img_width, img_height = 224, 224
+    img_width, img_height = 128, 128
     n_samples_per_class = 230  # 클래스당 최대 샘플 수
 
     # 데이터 로드 및 샘플링
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     history = model.fit(
         X_train, y_train,
         batch_size=16,
-        epochs=30,
+        epochs=10,
         validation_data=(X_val, y_val),
         callbacks=callbacks
     )
@@ -243,7 +243,7 @@ true_label = y_val[0]
 pred_label = y_pred[0]
 
 heatmap = grad_cam(model, image, pred_label, 'conv5_block3_out')  # 마지막 Convolutional Layer
-heatmap = cv2.resize(heatmap, (224, 224))
+heatmap = cv2.resize(heatmap, (128, 128))
 
 plt.figure(figsize=(8, 6))
 plt.subplot(1, 2, 1)

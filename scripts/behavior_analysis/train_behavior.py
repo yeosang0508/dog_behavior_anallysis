@@ -70,7 +70,7 @@ def train_unified_model(train_loader, val_loader, config):
         print(f"  Validation Loss: {val_losses[-1]:.4f}, Validation Accuracy: {val_accuracies[-1]:.4f}")
 
     model_save_path = os.path.join(config.models_dir, "stgcn_behavior.pth")
-    torch.save(model.state_dict(), model_save_path)
+    torch.save(model, model_save_path)
     print(f"Model saved to {model_save_path}")
     return model, train_losses, val_losses, train_accuracies, val_accuracies, feature_maps
 
