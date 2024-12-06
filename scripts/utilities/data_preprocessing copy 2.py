@@ -1,19 +1,35 @@
 import os
+import sys
+import csv
 import json
 import cv2
 import numpy as np
-import pandas as pd
-import csv
+import torch
+from models.experimental import attempt_load  # 모델 로드 함수
+from utils.general import non_max_suppression  # NMS 함수
+from utils.datasets import letterbox  # 이미지 전처리 함수
 
-# 관절 이름 설정 (1부터 15까지)
-joints_name = {
-    1: 'Nose', 2: 'Forehead', 3: 'Mouth Corner', 4: 'Lower Lip', 5: 'Neck',
-    6: 'Right Front Leg Start', 7: 'Left Front Leg Start', 8: 'Right Front Ankle', 9: 'Left Front Ankle',
-    10: 'Right Thigh', 11: 'Left Thigh', 12: 'Right Rear Ankle', 13: 'Left Rear Ankle',
-    14: 'Tail Start', 15: 'Tail End'
-}
+# YOLOv7 디렉토리를 Python 경로에 추가
+yolov7_path = r"C:\Users\admin\IdeaProjects\test\VSCode\yolov7"
+if yolov7_path not in sys.path:
+    sys.path.append(yolov7_path)
 
-# 행동 라벨 정의
+# COCO 클래스 정의
+coco_classes = [
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
+    "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
+    "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe",
+    "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
+    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+    "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl",
+    "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza",
+    "donut", "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet",
+    "TV", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven",
+    "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+    "hair drier", "toothbrush"
+]
+
+# 행동 라벨 정의 (13개)
 behavior_classes = {
     "bodylower": 0,
     "bodyscratch": 1,
@@ -30,36 +46,36 @@ behavior_classes = {
     "walkrun": 12
 }
 
-def visualize_keypoints_and_box(image, keypoints, bounding_box, save_path=None):
-    """
-    이미지에 키포인트와 바운딩 박스를 시각화합니다.
-    이미지 크기에 맞게 바운딩 박스와 키포인트 좌표를 비례적으로 조정합니다.
-    """
-    image_height, image_width = image.shape[:2]  # 이미지 크기 확인
+# YOLOv7 모델 로드 함수
+def load_yolo_model():
+    weights_path = r"C:\Users\admin\IdeaProjects\test\VSCode\yolov7\weights\yolov7-tiny.pt"
 
-    # 바운딩 박스 그리기 (이미지 크기에 맞게 비례 조정)
+    if not os.path.exists(weights_path):
+        raise FileNotFoundError(f"가중치 파일이 경로에 없습니다: {weights_path}")
+
+    try:
+        model = attempt_load(weights_path, map_location=torch.device('cpu'))
+        model.eval()
+        print(f"YOLOv7 모델 로드 완료: {weights_path}")
+        return model
+    except Exception as e:
+        raise RuntimeError(f"YOLOv7 모델 로드 중 오류 발생: {e}")
+
+# 키포인트와 바운딩 박스를 시각화
+def visualize_keypoints_and_box(image, keypoints, bounding_box, save_path=None):
     if bounding_box:
         x, y, w, h = map(int, [bounding_box['x'], bounding_box['y'], bounding_box['width'], bounding_box['height']])
-        # 이미지 크기에 비례 맞추기
-        x = int(x * image_width)
-        y = int(y * image_height)
-        w = int(w * image_width)
-        h = int(h * image_height)
-        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.rectangle(image, (x, y), (x + w, y + h), (255, 0, 0), 2)  # 파란색 박스
 
-    # 키포인트 그리기 (이미지 크기에 맞게 비례 조정)
-    for i in range(1, 16):
-        x = keypoints.get(str(i), {}).get("x")
-        y = keypoints.get(str(i), {}).get("y")
-        if x is not None and y is not None:
-            x, y = int(x * image_width), int(y * image_height)  # 비례 맞추기
-            cv2.circle(image, (x, y), 5, (0, 255, 0), -1)
-            cv2.putText(image, joints_name.get(i, f"Keypoint {i}"), (x + 5, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    for _, point in keypoints.items():
+        if point:
+            cv2.circle(image, (int(point['x']), int(point['y'])), 5, (0, 255, 0), -1)  # 초록색 점
 
-    # 이미지 저장 (옵션)
     if save_path:
         cv2.imwrite(save_path, image)
+    return image
 
+# JSON 데이터와 이미지 매칭 및 CSV 생성
 def load_and_match_data(labeling_dir, frame_dir, output_csv, cropped_folder, behavior_label): 
     os.makedirs(cropped_folder, exist_ok=True)
     data_pairs = []
@@ -88,10 +104,8 @@ def load_and_match_data(labeling_dir, frame_dir, output_csv, cropped_folder, beh
             dog_name = json_file.replace(".mp4.json", "") if ".mp4" in json_file else json_file.replace(".json", "")
             frames_path = os.path.normpath(os.path.join(frame_dir, dog_name.replace(".mp4", "")))
 
-            # 디버깅용 출력
-            print(f"frames_path: {frames_path}")
             if not os.path.exists(frames_path):
-                print(f"경로가 존재하지 않습니다: {frames_path}")
+                print(f"이미지 폴더가 존재하지 않습니다: {frames_path}")
                 continue
 
             video_cropped_folder = os.path.join(cropped_folder, dog_name)
@@ -111,7 +125,6 @@ def load_and_match_data(labeling_dir, frame_dir, output_csv, cropped_folder, beh
                     cropped_path = None
 
                     if bounding_box:
-                        # 여기서 실제 강아지만을 감지하는 모델을 사용하여 자르기
                         cropped_image = cv2.imread(frame_path)
                         if cropped_image is not None:
                             x, y, w, h = map(int, [bounding_box['x'], bounding_box['y'], bounding_box['width'], bounding_box['height']])
@@ -120,11 +133,9 @@ def load_and_match_data(labeling_dir, frame_dir, output_csv, cropped_folder, beh
                             cv2.imwrite(cropped_path, cropped_image)
                             detection_success = True
 
-                            # 키포인트 시각화된 이미지 저장
                             vis_save_path = os.path.join(video_cropped_folder, f"vis_frame_{frame_number}.jpg")
                             visualize_keypoints_and_box(cropped_image, keypoints, bounding_box, save_path=vis_save_path)
 
-                    # CSV 파일에 키포인트 정보 저장
                     keypoints_flat = [
                         keypoints[str(i)]["x"] if keypoints.get(str(i)) else None
                         for i in range(1, 16)
@@ -133,7 +144,6 @@ def load_and_match_data(labeling_dir, frame_dir, output_csv, cropped_folder, beh
                         for i in range(1, 16)
                     ]
 
-                    # 수정된 부분: CSV 파일에 저장하는 row 수정
                     writer.writerow([frame_number, frame_path, cropped_path, detection_success, behavior_label] + keypoints_flat)
 
     print(f"CSV 파일 '{output_csv}' 생성 완료.")
@@ -141,19 +151,15 @@ def load_and_match_data(labeling_dir, frame_dir, output_csv, cropped_folder, beh
 
 # 메인 실행 함수
 if __name__ == "__main__":
-    # 경로 설정
     train_dir = r"C:\Users\admin\IdeaProjects\test\VSCode\data\train"
-    csv_output = r"C:\Users\admin\IdeaProjects\test\VSCode\data\csv_file\annotations_bodylower.csv"
-    cropped_output = r"C:\Users\admin\IdeaProjects\test\VSCode\data\cropped_bodylower"
-    output_folder = r"C:\Users\admin\IdeaProjects\test\VSCode\data\visualizations"  # 시각화 이미지 저장 폴더
+    csv_output = r"C:\Users\admin\IdeaProjects\test\VSCode\data\csv_file\annotations_sit.csv"
+    cropped_output = r"C:\Users\admin\IdeaProjects\test\VSCode\data\cropped_sit"
 
-    # 행동 라벨 지정
-    behavior_label = behavior_classes["bodylower"]
+    behavior_label = behavior_classes["sit"]
 
-    # JSON 데이터를 읽고 CSV를 생성하며 이미지에 키포인트를 시각화
     load_and_match_data(
-        labeling_dir=os.path.join(train_dir, "bodylower", "labeling_bodylower"),
-        frame_dir=os.path.join(train_dir, "bodylower", "frame_bodylower"),
+        labeling_dir=os.path.join(train_dir, "sit", "labeling_sit"),
+        frame_dir=os.path.join(train_dir, "sit", "frame_sit"),
         output_csv=csv_output,
         cropped_folder=cropped_output,
         behavior_label=behavior_label

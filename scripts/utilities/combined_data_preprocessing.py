@@ -1,9 +1,37 @@
-import pandas as pd
 import os
+import json
+import cv2
+import numpy as np
+import pandas as pd
+import csv
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from imblearn.over_sampling import RandomOverSampler
-import numpy as np
+
+# 관절 이름 설정 (1부터 15까지)
+joints_name = {
+    1: 'Nose', 2: 'Forehead', 3: 'Mouth Corner', 4: 'Lower Lip', 5: 'Neck',
+    6: 'Right Front Leg Start', 7: 'Left Front Leg Start', 8: 'Right Front Ankle', 9: 'Left Front Ankle',
+    10: 'Right Thigh', 11: 'Left Thigh', 12: 'Right Rear Ankle', 13: 'Left Rear Ankle',
+    14: 'Tail Start', 15: 'Tail End'
+}
+
+# 행동 라벨 정의
+behavior_classes = {
+    "bodylower": 0,
+    "bodyscratch": 1,
+    "bodyshake": 2,
+    "feetup": 3,
+    "footup": 4,
+    "heading": 5,
+    "lying": 6,
+    "mounting": 7,
+    "sit": 8,
+    "tailing": 9,
+    "taillow": 10,
+    "turn": 11,
+    "walkrun": 12
+}
 
 # 데이터 증강 함수
 def augment_data(data, num_augmentations=1):
@@ -37,6 +65,7 @@ def merge_csv_files(csv_folder, output_file):
         "mounting": "annotations_mounting.csv",
         "sit": "annotations_sit.csv",
         "tailing": "annotations_tailing.csv",
+        "taillow": "annotations_taillow.csv",
         "turn": "annotations_turn.csv",
         "walkrun": "annotations_walkrun.csv"
     }
@@ -45,7 +74,7 @@ def merge_csv_files(csv_folder, output_file):
     for label, filename in csv_files.items():
         file_path = os.path.join(csv_folder, filename)
         data = pd.read_csv(file_path)
-        data['label'] = label  # 레이블 추가
+        data['label'] = behavior_classes[label]  # 레이블 추가
         all_data.append(data)
 
     combined_data = pd.concat(all_data, ignore_index=True)
@@ -76,16 +105,16 @@ def split_dataset(data, output_folder, apply_augmentation=True, augment_factor=1
     print(f"Test size: {len(test_data)}")
     print(train_data['label'].value_counts(normalize=True))
 
-    # 데이터 증강
-    if apply_augmentation:
-        print("Applying data augmentation...")
-        augmented_data = augment_data(train_data, num_augmentations=augment_factor)
-        train_data = pd.concat([train_data, augmented_data], ignore_index=True)
-        print(f"After augmentation, train size: {len(train_data)}")
-        print(train_data['label'].value_counts(normalize=True))
+    # # 데이터 증강
+    # if apply_augmentation:
+    #     print("데이터 증강 진행")
+    #     augmented_data = augment_data(train_data, num_augmentations=augment_factor)
+    #     train_data = pd.concat([train_data, augmented_data], ignore_index=True)
+    #     print(f"After augmentation, train size: {len(train_data)}")
+    #     print(train_data['label'].value_counts(normalize=True))
 
     # 오버샘플링
-    print("Applying oversampling...")
+    print("오버샘플링 진행")
     ros = RandomOverSampler(random_state=42)
     train_data, train_labels = ros.fit_resample(train_data, train_data['label'])
     train_data['label'] = train_labels  # 오버샘플링 후 라벨 복원

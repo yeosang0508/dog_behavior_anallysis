@@ -16,6 +16,8 @@ class BehaviorDataset(Dataset):
         self.transform = transform
         self.num_frames = num_frames
 
+        print(f"Filtered dataset length: {len(self.data)}")
+
         # 관절 데이터 열 이름 정의
         self.joint_columns = [
             "x1", "y1", "x3", "y2", "x5", "y3", "x7", "y4", "x9", "y5",
@@ -50,3 +52,4 @@ class BehaviorDataset(Dataset):
         label = torch.tensor(self.labels[idx], dtype=torch.long)
 
         return skeleton, label
+
