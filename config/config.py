@@ -11,9 +11,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 데이터 경로 설정
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-TRAIN_CSV = r"data\csv_file\train_numeric.csv"
-VAL_CSV = r"data\csv_file\train_numeric.csv"
-TEST_CSV = r"data\csv_file\train_numeric.csv"
+TRAIN_CSV = r"data\annotations_train.csv"
+VAL_CSV = r"data\annotations_validation.csv"
+TEST_CSV = r"data\annotations_test.csv"
 
 # 모델 경로 설정
 MODELS_DIR = os.path.join(BASE_DIR, 'models')

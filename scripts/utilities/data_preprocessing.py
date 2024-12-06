@@ -1,28 +1,83 @@
 import os
+import sys
 import cv2
 import csv
 import json
 import numpy as np
 import torch
-from hydra import main
+import hydra
+from hydra import initialize, compose
 from omegaconf import DictConfig, OmegaConf
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
-import matplotlib.pyplot as plt
 from hydra.core.global_hydra import GlobalHydra
 from hydra.core.hydra_config import HydraConfig
+import matplotlib.pyplot as plt
+
+# 현재 스크립트 디렉토리와 루트 디렉토리 설정
+current_dir = os.path.dirname(os.path.abspath(__file__))  # 현재 스크립트 위치
+project_root = os.path.abspath(os.path.join(current_dir, "../../"))  # 루트 디렉토리
+sam2_path = os.path.join(project_root, "sam2")  # sam2 디렉토리 경로
+
+# sys.path에 루트 및 sam2 경로 추가
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+if sam2_path not in sys.path:
+    sys.path.insert(0, sam2_path)
+
+print(f"현재 작업 디렉토리: {os.getcwd()}")
+print(f"sys.path 설정: {sys.path[:5]}")  # 디버깅용
 
 # Hydra 초기화 상태 확인 및 클리어
 def reset_hydra():
+    """
+    Hydra가 이미 초기화된 상태라면 초기화를 클리어합니다.
+    """
     if GlobalHydra.instance().is_initialized():
+        initialize(config_path="sam2/sam2/configs", job_name="sam2", version_base="1.2")
+        print("Hydra가 이미 초기화되어 있습니다. 초기화를 클리어합니다.")
         GlobalHydra.instance().clear()
+    else:
+        print("Hydra가 초기화되어 있지 않습니다.")
+
+    try:
+        cfg = compose(config_name="sam2_hiera_t.yaml")
+        print("로드된 설정 내용:", OmegaConf.to_yaml(cfg))
+    except Exception as e:
+        print(f"설정 파일 로드 중 오류 발생: {e}")
+        exit(1)
+
+# Hydra 초기화
+def initialize_hydra():
+    """
+    Hydra 초기화 상태를 클리어하고, 새로 초기화합니다.
+    """
+    reset_hydra()  # 기존 초기화 상태 클리어
+    try:
+        # YAML 파일의 절대 경로 설정
+        config_path = os.path.abspath(os.path.join(project_root, "sam2/sam2/configs"))
+        print(f"Hydra 설정 경로: {config_path}")
+
+        print(f"Config path: {config_path}")
+        print(f"YAML file path: {yaml_file}")
+        print(f"Config path 존재 여부: {os.path.exists(config_path)}")
+        print(f"YAML 파일 존재 여부: {os.path.exists(yaml_file)}")
+
+        # Hydra 초기화
+        hydra.initialize(config_path=config_path, version_base="1.2")
+        print(f"Hydra 설정 모듈을 성공적으로 초기화했습니다. 설정 경로: {config_path}")
+    except Exception as e:
+        print(f"Hydra 설정 모듈 초기화 중 오류 발생: {e}")
 
 # SAM 모델 초기화 및 로드 함수
 def initialize_and_load_sam_model(cfg: DictConfig):
     """
     Hydra 설정을 받아 SAM 모델을 초기화하고 로드합니다.
     """
-    model_path = cfg.sam_model_path
+    # 모델 경로 확인 및 기본값 처리
+    model_path = cfg.get("sam_model_path", None)
+    if not model_path:
+        raise ValueError("`sam_model_path`가 설정 파일에 없습니다. 설정 파일을 확인하세요.")
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model checkpoint not found: {model_path}")
 
@@ -119,31 +174,25 @@ def process_data_with_visualization(labeling_dir, frame_dir, output_csv, predict
                     keypoints_flat = [keypoints[str(i)][coord] for i in range(1, 16) for coord in ["x", "y"]]
                     writer.writerow([frame_number, cropped_path, bbox, keypoints_flat])
 
-@main(config_path="C:/Users/admin/IdeaProjects/VSCode/sam2/sam2/configs/sam2.1", 
-      config_name="sam2.1_hiera_t.yaml", 
-      version_base=None)
-def main(cfg: DictConfig):
-    reset_hydra()  # Hydra 초기화 클리어
+if __name__ == "__main__":
+    reset_hydra()  # Hydra 초기화 상태 클리어
+    initialize_hydra()  # Hydra 초기화 후 설정 경로 재구성
+    cfg = compose(config_name="sam2/sam2_hiera_t.yaml")
+    print("로드된 설정 내용:", cfg)
 
-    # 디버깅: YAML 설정 로드 확인
-    print("Loaded configuration:\n", OmegaConf.to_yaml(cfg))
-
-    # 디버깅: 런타임 디렉토리 확인
-    runtime_config = HydraConfig.get()
-    print("Hydra Runtime Config:\n", runtime_config)
-    
     # 경로 정의
-    train_labeling_dir = r"C:\Users\admin\IdeaProjects\VSCode\data\train\bodylower\labeling_bodylower"
-    train_frame_dir = r"C:\Users\admin\IdeaProjects\VSCode\data\train\bodylower\frame_bodylower"
-    output_csv_path = "data/csv_file/annotations_bodylower.csv"
-    visualization_dir = r"C:\Users\admin\IdeaProjects\VSCode\visualizations"
+    train_labeling_dir = r"C:/Users/admin/IdeaProjects/VSCode/data/train/bodylower/labeling_bodylower"
+    train_frame_dir = r"C:/Users/admin/IdeaProjects/VSCode/data/train/bodylower/frame_bodylower"
+    output_csv_path = r"C:/Users/admin/IdeaProjects/VSCode/data/csv_file/annotations_bodylower.csv"
+    visualization_dir = r"C:/Users/admin/IdeaProjects/VSCode/visualizations"
 
     # SAM 모델 초기화 및 로드
     predictor = initialize_and_load_sam_model(cfg)
 
+
+    yaml_path = "C:/Users/admin/IdeaProjects/VSCode/sam2/sam2/configs/sam2/sam2_hiera_t.yaml"
+    print(f"YAML 파일 경로: {yaml_path}")
+    print(f"YAML 파일 존재 여부: {os.path.exists(yaml_path)}")
+
     # 데이터 처리 및 시각화
     process_data_with_visualization(train_labeling_dir, train_frame_dir, output_csv_path, predictor, vis_dir=visualization_dir)
-
-if __name__ == "__main__":
-    reset_hydra()  # 실행 전에 Hydra 초기화 클리어
-    main()

@@ -129,9 +129,24 @@ def plot_training_results(train_losses, val_losses, train_accuracies, val_accura
     plt.show()
 
 
+def initialize_and_load_sam_model(cfg):
+    # `sam_model_path` 키가 없으면 기본 경로 사용
+    model_path = getattr(cfg, 'sam_model_path', 'C:/Users/admin/IdeaProjects/VSCode/sam2/checkpoints/sam2_hiera_tiny.pt')
+    print(f"모델 경로: {model_path}")
+    # 모델 로드 로직 (여기에 모델을 실제로 로드하는 코드를 작성)
+    # 예: model = torch.load(model_path)
+    return model_path  # 또는 모델 객체 반환
+
+
+
 # ----- 실행 -----
 if __name__ == "__main__":
     config = Config()
+    
+    # SAM 모델 초기화 및 로드
+    model_path = initialize_and_load_sam_model(config)
+    print(f"Initialized SAM Model with weights at: {model_path}")
+    
     train_data = BehaviorDataset(config.train_csv, num_frames=config.num_frames)
     val_data = BehaviorDataset(config.val_csv, num_frames=config.num_frames)
 
