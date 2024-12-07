@@ -11,9 +11,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 데이터 경로 설정
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-TRAIN_CSV = r"data\annotations_train.csv"
-VAL_CSV = r"data\annotations_validation.csv"
-TEST_CSV = r"data\annotations_test.csv"
+TRAIN_CSV = r"data\split_data\annotations_train.csv"
+VAL_CSV = r"data\split_data\annotations_validation.csv"
+TEST_CSV = r"data\split_data\annotations_validation.csv"
 
 # 모델 경로 설정
 MODELS_DIR = os.path.join(BASE_DIR, 'models')
@@ -32,7 +32,7 @@ class Config:
     def __init__(self,
                  input_size: List[int] = [384, 288],
                  kpd: float = 4.0,
-                 epochs: int = 15,
+                 epochs: int = 10,
                  sigma: float = 3.0,
                  num_joints: int = 15,
                  num_frames: int = 30,
@@ -40,17 +40,18 @@ class Config:
                  batch_size: int = 16,
                  random_seed: int = 2021,
                  test_ratio: float = 0.1,
-                 learning_rate: float = 1e-3,
+                 learning_rate: float = 1e-6,
                  save_folder: str = '',
                  loss_type: str = "MSE",
                  target_type: str = "gaussian",
                  post_processing: str = "dark",
-                 debug: bool = False,
+                 debug: bool = True,
                  shift: bool = False,
                  init_training: bool = False,
                  train_csv=TRAIN_CSV,
                  val_csv=VAL_CSV,
-                 test_csv=TEST_CSV):
+                 test_csv=TEST_CSV,
+                 num_workers: int = 0):
                  
 
 
@@ -67,6 +68,7 @@ class Config:
         if not os.path.exists(self.save_folder) and self.save_folder != '':
             os.makedirs(self.save_folder, exist_ok=True)
 
+        self.num_workers = num_workers 
         self.num_epochs = epochs
         self.seed = random_seed
         self.learning_rate = learning_rate

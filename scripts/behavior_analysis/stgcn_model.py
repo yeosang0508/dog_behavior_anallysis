@@ -14,7 +14,7 @@ class UnifiedModel3DCNN(nn.Module):
         self.stgcn_gcn3 = nn.Conv2d(128, 256, kernel_size=1)
         self.relu = nn.ReLU()
 
-        # 추가: AdaptiveAvgPool2d로 STGCN 출력 크기 고정
+        # AdaptiveAvgPool2d로 STGCN 출력 크기 고정
         self.stgcn_pool = nn.AdaptiveAvgPool2d((num_frames // 2, num_joints // 2))
         self.stgcn_fc = nn.Linear((num_frames // 2) * (num_joints // 2) * 256, hidden_size)
 
@@ -39,8 +39,6 @@ class UnifiedModel3DCNN(nn.Module):
         # 최종 출력 계층
         self.output_layer = nn.Linear(hidden_size, num_classes)
 
-        
-
     def forward(self, skeletons, adjacency_matrix):
         # STGCN 처리
         x = torch.einsum("bctj,jk->bctk", skeletons, adjacency_matrix)
@@ -56,14 +54,11 @@ class UnifiedModel3DCNN(nn.Module):
         dynamic_features = self.dynamic_feature_extractor(dynamic_input)
         dynamic_features = dynamic_features.view(dynamic_features.size(0), -1)  # 평탄화
 
-        # # 출력 크기 확인 (디버깅)
-        # print(f"STGCN Features Shape: {stgcn_features.shape}")
-        # print(f"Dynamic Features Shape: {dynamic_features.shape}")
-
         # STGCN과 SAMURAI 출력 결합
         fused_features = torch.cat([stgcn_features, dynamic_features], dim=1)  # (batch_size, hidden_size + 128)
         fused_output = self.fusion_layer(fused_features)
 
         return self.output_layer(fused_output)
-    
+
+# STGCN 모델 설정
 STGCN = UnifiedModel3DCNN

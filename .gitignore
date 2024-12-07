@@ -101,6 +101,11 @@ static
 
 sam2
 uploaded_videos
-data
-outputs
+
 yolov7
+yolov7_env
+segment-anything-2
+good.py
+data
+
+outputs

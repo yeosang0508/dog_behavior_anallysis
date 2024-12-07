@@ -1,31 +1,32 @@
-import pandas as pd
 import os
+import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from imblearn.over_sampling import RandomOverSampler
-import numpy as np
 
-# 데이터 증강 함수
-def augment_data(data, num_augmentations=1):
-    """
-    데이터 증강: 좌우 반전과 같은 간단한 변환 수행.
-    Args:
-        data (pd.DataFrame): 증강할 데이터
-        num_augmentations (int): 증강 반복 횟수
-    Returns:
-        pd.DataFrame: 증강된 데이터
-    """
-    augmented_data = []
-    for _ in range(num_augmentations):
-        flipped = data.copy()
-        for col in flipped.columns:
-            if 'x' in col:  # x 좌표는 좌우 반전
-                flipped[col] = -flipped[col]
-        augmented_data.append(flipped)
-    return pd.concat(augmented_data, ignore_index=True)
+# 행동 라벨 정의 (13개)
+behavior_classes = {
+    "bodylower": 0,
+    "bodyscratch": 1,
+    "bodyshake": 2,
+    "feetup": 3,
+    "footup": 4,
+    "heading": 5,
+    "lying": 6,
+    "mounting": 7,
+    "sit": 8,
+    "tailing": 9,
+    "taillow": 10,
+    "turn": 11,
+    "walkrun": 12
+}
 
 # CSV 파일 통합 및 저장
 def merge_csv_files(csv_folder, output_file):
+    """
+    여러 행동 폴더에 있는 CSV 파일을 하나로 통합합니다.
+    """
     csv_files = {
         "bodylower": "annotations_bodylower.csv",
         "bodyscratch": "annotations_bodyscratch.csv",
@@ -37,6 +38,7 @@ def merge_csv_files(csv_folder, output_file):
         "mounting": "annotations_mounting.csv",
         "sit": "annotations_sit.csv",
         "tailing": "annotations_tailing.csv",
+        "taillow": "annotations_taillow.csv",
         "turn": "annotations_turn.csv",
         "walkrun": "annotations_walkrun.csv"
     }
@@ -44,73 +46,73 @@ def merge_csv_files(csv_folder, output_file):
     all_data = []
     for label, filename in csv_files.items():
         file_path = os.path.join(csv_folder, filename)
+        if not os.path.exists(file_path):
+            print(f"파일이 존재하지 않습니다: {file_path}")
+            continue
+
         data = pd.read_csv(file_path)
-        data['label'] = label  # 레이블 추가
+        data['behavior_label'] = label
+        data['behavior_class'] = behavior_classes[label]
         all_data.append(data)
 
     combined_data = pd.concat(all_data, ignore_index=True)
     combined_data.to_csv(output_file, index=False)
-    print(f"Combined data saved to {output_file}")
+    print(f"통합 데이터가 저장되었습니다: {output_file}")
     return combined_data
 
-# 데이터셋 분리 및 저장
-def split_dataset(data, output_folder, apply_augmentation=True, augment_factor=1):
+# 데이터셋 분리 및 RandomOverSampler 적용
+def split_dataset_with_ros(data, output_folder):
     """
-    데이터셋을 분리하고 데이터 증강 및 오버샘플링 적용.
-    Args:
-        data (pd.DataFrame): 원본 데이터셋
-        output_folder (str): 저장할 폴더 경로
-        apply_augmentation (bool): 데이터 증강 여부
-        augment_factor (int): 증강 데이터 생성 반복 횟수
-    Returns:
-        tuple: 훈련, 검증, 테스트 데이터셋
+    데이터셋을 훈련, 검증, 테스트 세트로 분리한 후, 훈련 데이터에 RandomOverSampler를 적용하여 클래스 비율을 균등화합니다.
     """
     # 데이터셋 분리
-    train_data, temp_data = train_test_split(data, test_size=0.2, random_state=42, stratify=data['label'])
-    validation_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42, stratify=temp_data['label'])
+    train_data, temp_data = train_test_split(data, test_size=0.2, random_state=42, stratify=data['behavior_class'])
+    validation_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42, stratify=temp_data['behavior_class'])
 
-    # 클래스 비율 확인
-    print("Before augmentation:")
-    print(f"Train size: {len(train_data)}")
-    print(f"Validation size: {len(validation_data)}")
-    print(f"Test size: {len(test_data)}")
-    print(train_data['label'].value_counts(normalize=True))
+    print(f"Train size (before oversampling): {len(train_data)}, Validation size: {len(validation_data)}, Test size: {len(test_data)}")
+    print(f"클래스 비율 (훈련, before oversampling): \n{train_data['behavior_class'].value_counts(normalize=True)}")
 
-    # 데이터 증강
-    if apply_augmentation:
-        print("Applying data augmentation...")
-        augmented_data = augment_data(train_data, num_augmentations=augment_factor)
-        train_data = pd.concat([train_data, augmented_data], ignore_index=True)
-        print(f"After augmentation, train size: {len(train_data)}")
-        print(train_data['label'].value_counts(normalize=True))
-
-    # 오버샘플링
-    print("Applying oversampling...")
+    # RandomOverSampler 적용
+    print("훈련 데이터에 RandomOverSampler 오버샘플링 진행...")
     ros = RandomOverSampler(random_state=42)
-    train_data, train_labels = ros.fit_resample(train_data, train_data['label'])
-    train_data['label'] = train_labels  # 오버샘플링 후 라벨 복원
-    print(f"After oversampling, train size: {len(train_data)}")
-    print(train_data['label'].value_counts(normalize=True))
+
+    keypoints_columns = [col for col in data.columns if col.startswith('x') or col.startswith('y')]
+    features = train_data[keypoints_columns]
+    labels = train_data['behavior_class']
+
+    features_resampled, labels_resampled = ros.fit_resample(features, labels)
+
+    # Resampled 데이터 합치기
+    train_data_resampled = pd.DataFrame(features_resampled, columns=keypoints_columns)
+    train_data_resampled['behavior_class'] = labels_resampled
+
+    print(f"Train size (after oversampling): {len(train_data_resampled)}")
+    print(f"클래스 비율 (훈련, after oversampling): \n{train_data_resampled['behavior_class'].value_counts(normalize=True)}")
 
     # 클래스 가중치 계산
-    class_weights = compute_class_weight('balanced', classes=np.unique(train_data['label']), y=train_data['label'])
+    class_weights = compute_class_weight('balanced', classes=np.unique(labels_resampled), y=labels_resampled)
     print(f"Class Weights: {class_weights}")
 
     # 데이터 저장
     os.makedirs(output_folder, exist_ok=True)
-    train_data.to_csv(os.path.join(output_folder, "annotations_train.csv"), index=False)
+    train_data_resampled.to_csv(os.path.join(output_folder, "annotations_train.csv"), index=False)
     validation_data.to_csv(os.path.join(output_folder, "annotations_validation.csv"), index=False)
     test_data.to_csv(os.path.join(output_folder, "annotations_test.csv"), index=False)
 
-    print("저장 완료!")
-    return train_data, validation_data, test_data
+    print("훈련, 검증, 테스트 데이터가 저장되었습니다!")
+    return train_data_resampled, validation_data, test_data
 
+# 실행
 if __name__ == "__main__":
     # 경로 설정
-    csv_folder = "data/csv_file/"
-    output_combined_file = "data/csv_file/annotations_combined.csv"
-    output_split_folder = "data/split_data"
+    csv_folder = "data/csv_file/"  # 행동 폴더별 CSV가 저장된 디렉토리
+    output_combined_file = "data/csv_file/annotations_combined.csv"  # 통합 CSV 경로
+    output_split_folder = "data/split_data/"  # 분리된 데이터 저장 폴더
 
-    # CSV 파일 통합 및 데이터셋 분리
+    # CSV 파일 통합
+    print("CSV 파일 통합 중...")
     combined_data = merge_csv_files(csv_folder, output_combined_file)
-    split_dataset(combined_data, output_split_folder, apply_augmentation=True, augment_factor=2)
+
+    # 데이터셋 분리 및 RandomOverSampler 적용
+    print("데이터셋 분리 중...")
+    train_data, validation_data, test_data = split_dataset_with_ros(combined_data, output_split_folder)

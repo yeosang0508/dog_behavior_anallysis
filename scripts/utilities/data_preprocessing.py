@@ -92,65 +92,47 @@ def initialize_and_load_sam_model(cfg: DictConfig):
 # 강아지 영역 감지 및 시각화 함수
 def detect_and_visualize(image_path, predictor, output_dir=None, visualize=False):
     """
-    입력 이미지에서 강아지 영역을 감지하고 시각화합니다.
+    이미지에 키포인트와 바운딩 박스를 시각화합니다.
+    이미지 크기에 맞게 바운딩 박스와 키포인트 좌표를 비례적으로 조정합니다.
     """
-    image = cv2.imread(image_path)
-    if image is None:
-        print(f"Image not found: {image_path}")
-        return [], image
+    image_height, image_width = image.shape[:2]  # 이미지 크기 확인
 
-    predictor.set_image(image)
-    with torch.no_grad():
-        masks, _, _ = predictor.predict(input_prompts=None)
+    # 바운딩 박스 그리기 (이미지 크기에 맞게 비례 조정)
+    if bounding_box:
+        x, y, w, h = map(int, [bounding_box['x'], bounding_box['y'], bounding_box['width'], bounding_box['height']])
+        # 이미지 크기에 비례 맞추기
+        x = int(x * image_width)
+        y = int(y * image_height)
+        w = int(w * image_width)
+        h = int(h * image_height)
+        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-    vis_image = image.copy()
-    cropped_regions = []
-    for mask in masks:
-        x, y, w, h = cv2.boundingRect(mask.astype(np.uint8))
-        cropped_image = image[y:y+h, x:x+w]
-        cropped_regions.append((cropped_image, (x, y, w, h)))
+    # 키포인트 그리기 (이미지 크기에 맞게 비례 조정)
+    for i in range(1, 16):
+        x = keypoints.get(str(i), {}).get("x")
+        y = keypoints.get(str(i), {}).get("y")
+        if x is not None and y is not None:
+            x, y = int(x * image_width), int(y * image_height)  # 비례 맞추기
+            cv2.circle(image, (x, y), 5, (0, 255, 0), -1)
+            cv2.putText(image, joints_name.get(i, f"Keypoint {i}"), (x + 5, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-        # 마스크 경계선 그리기
-        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(vis_image, contours, -1, (0, 255, 0), 2)  # 초록색
+    # 이미지 저장 (옵션)
+    if save_path:
+        cv2.imwrite(save_path, image)
 
-        # 경계 상자 그리기
-        cv2.rectangle(vis_image, (x, y), (x + w, y + h), (255, 0, 0), 2)  # 파란색
+def load_and_match_data(labeling_dir, frame_dir, output_csv, cropped_folder, behavior_label): 
+    os.makedirs(cropped_folder, exist_ok=True)
+    data_pairs = []
 
-    # 시각화 저장
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f"visualized_{os.path.basename(image_path)}")
-        cv2.imwrite(output_path, vis_image)
-        print(f"Visualization saved to: {output_path}")
+    with open(output_csv, mode="w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        header = ["frame_number", "frame_path", "cropped_path", "detection_success", "label"] + [f"x{i}" if i % 2 == 1 else f"y{i//2}" for i in range(1, 31)]
+        writer.writerow(header)
 
-    # 시각화 플롯
-    if visualize:
-        plt.figure(figsize=(10, 10))
-        plt.imshow(cv2.cvtColor(vis_image, cv2.COLOR_BGR2RGB))
-        plt.title("Object Detection Visualization")
-        plt.axis("off")
-        plt.show()
-
-    return cropped_regions, vis_image
-
-# JSON 데이터를 읽고 CSV 생성 및 시각화
-def process_data_with_visualization(labeling_dir, frame_dir, output_csv, predictor, vis_dir=None):
-    """
-    JSON 데이터를 읽고 CSV로 저장하며, 감지된 이미지를 시각화합니다.
-    """
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    if vis_dir:
-        os.makedirs(vis_dir, exist_ok=True)
-        
-    with open(output_csv, "w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow(["frame_number", "cropped_frame_path", "bounding_box", "keypoints"])
-        
         for json_file in os.listdir(labeling_dir):
             if not json_file.endswith(".json"):
                 continue
-            
+
             json_path = os.path.join(labeling_dir, json_file)
             with open(json_path, "r", encoding="utf-8") as f:
                 annotations = json.load(f).get("annotations", [])
