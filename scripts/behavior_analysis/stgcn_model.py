@@ -24,7 +24,7 @@ class UnifiedModel3DCNN(nn.Module):
             nn.ReLU(),
             nn.Conv3d(32, 64, kernel_size=(3, 3, 3), stride=1, padding=1),
             nn.ReLU(),
-            nn.MaxPool3d(kernel_size=(1, 2, 2), stride=(1, 2, 2)),
+            nn.MaxPool3d(kernel_size=(1, 1, 2), stride=(1, 1, 2)),
             nn.Conv3d(64, 128, kernel_size=(3, 3, 3), stride=1, padding=1),
             nn.ReLU(),
             nn.AdaptiveAvgPool3d((1, 1, 1))  # dynamic_features 출력 크기 고정
@@ -39,7 +39,9 @@ class UnifiedModel3DCNN(nn.Module):
         # 최종 출력 계층
         self.output_layer = nn.Linear(hidden_size, num_classes)
 
-    def forward(self, skeletons, adjacency_matrix):
+    def forward(self, skeletons, adjacency_matrix=None):
+        dynamic_input = skeletons.unsqueeze(1)
+
         # STGCN 처리
         x = torch.einsum("bctj,jk->bctk", skeletons, adjacency_matrix)
         x = self.relu(self.stgcn_gcn1(x))

@@ -1,16 +1,16 @@
 import os
+import pandas as pd
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-import pandas as pd
-from sklearn.metrics import classification_report, accuracy_score
-from stgcn_model import STGCN  # 수정된 STGCN 모델 불러오기
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
 
+# GPU/CPU 설정
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# 행동 라벨 정의
+# 행동 클래스 정의
 behavior_classes = {
     0: "bodylower",
     1: "bodyscratch",
@@ -27,96 +27,93 @@ behavior_classes = {
     12: "walkrun"
 }
 
-class DogBehaviorDataset(Dataset):
-    def __init__(self, csv_file, num_frames=1, num_joints=15):
+class KeypointDataset(Dataset):
+    def __init__(self, csv_file):
         self.data = pd.read_csv(csv_file)
 
-        # x, y 키포인트 열 추출
-        keypoints_cols = [col for col in self.data.columns if col.startswith('x') or col.startswith('y')]
+        # 결측값 처리
+        self.data.fillna(0, inplace=True)
 
-        # 키포인트 열이 홀수인 경우 마지막 열에 0으로 패딩
-        if len(keypoints_cols) % 2 != 0:
-            print("키포인트 열 개수가 짝수가 아닙니다. 마지막 열에 0으로 패딩 추가.")
-            padding_column = f"padding_{len(keypoints_cols)}"
-            self.data[padding_column] = 0
-            keypoints_data = self.data[keypoints_cols + [padding_column]].values
-        else:
-            keypoints_data = self.data[keypoints_cols].values
+        # 키포인트 정규화
+        keypoint_columns = [col for col in self.data.columns if col.startswith("x") or col.startswith("y")]
+        self.scaler = StandardScaler()
+        self.keypoints = self.scaler.fit_transform(self.data[keypoint_columns].values.astype(np.float32))
 
-        # 키포인트 데이터 크기 조정
-        flattened_data = keypoints_data.flatten()
-        expected_size = (flattened_data.size // (2 * num_joints)) * (2 * num_joints)
-
-        # 초과 데이터를 자르거나 패딩 추가
-        if flattened_data.size > expected_size:
-            print(f"데이터 크기가 맞지 않아 조정: {flattened_data.size} -> {expected_size}. 초과 데이터 제거.")
-            flattened_data = flattened_data[:expected_size]
-        elif flattened_data.size < expected_size:
-            padding_needed = expected_size - flattened_data.size
-            print(f"데이터 크기가 맞지 않아 조정: {flattened_data.size} -> {expected_size}. 0으로 패딩 추가.")
-            flattened_data = np.pad(flattened_data, (0, padding_needed), mode='constant', constant_values=0)
-
-        # 데이터를 (samples, frames, channels, joints) 형태로 재구성
-        try:
-            self.features = flattened_data.reshape(-1, num_frames, 2, num_joints)
-        except ValueError as e:
-            raise ValueError(f"데이터 크기 조정 실패: {e}")
-
-        # 라벨 크기를 피처 크기에 맞게 조정
-        total_samples = self.features.shape[0]
-        if len(self.data['behavior_class']) > total_samples:
-            print(f"라벨 크기 조정: {len(self.data['behavior_class'])} -> {total_samples}. 초과 라벨 제거.")
-            self.labels = self.data['behavior_class'].values[:total_samples]
-        elif len(self.data['behavior_class']) < total_samples:
-            print(f"라벨 크기 조정: {len(self.data['behavior_class'])} -> {total_samples}. 라벨에 패딩 추가.")
-            label_padding = total_samples - len(self.data['behavior_class'])
-            self.labels = np.pad(
-                self.data['behavior_class'].values, 
-                (0, label_padding), 
-                mode='constant', 
-                constant_values=-1  # 패딩된 라벨은 -1로 설정
-            )
-        else:
-            self.labels = self.data['behavior_class'].values
-
-        # 데이터 동기화 확인
-        if len(self.labels) != self.features.shape[0]:
-            raise ValueError(f"라벨 크기가 피처와 여전히 일치하지 않습니다: {len(self.labels)} != {self.features.shape[0]}")
+        # 행동 클래스
+        self.labels = self.data["behavior_class"].values.astype(np.int64)
 
     def __len__(self):
-        return len(self.features)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        x = torch.tensor(self.features[idx], dtype=torch.float32)
-        y = torch.tensor(self.labels[idx], dtype=torch.long)
-        return x, y
+        keypoints = self.keypoints[idx]
+        label = self.labels[idx]
+        return torch.tensor(keypoints, dtype=torch.float32), torch.tensor(label)
 
+class ResidualBlock(nn.Module):
+    """Residual Block to add skip connections"""
+    def __init__(self, input_size, hidden_size):
+        super(ResidualBlock, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_size, input_size)
+        self.batch_norm = nn.BatchNorm1d(input_size)
 
-def load_data(train_file, val_file, test_file, batch_size=32):
-    train_dataset = DogBehaviorDataset(train_file)
-    val_dataset = DogBehaviorDataset(val_file)
-    test_dataset = DogBehaviorDataset(test_file)
+    def forward(self, x):
+        residual = x
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.batch_norm(x)
+        return x + residual
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+class KeypointModel(nn.Module):
+    def __init__(self, input_size, num_classes):
+        super(KeypointModel, self).__init__()
+        self.fc1 = nn.Linear(input_size, 256)
+        self.residual_block1 = ResidualBlock(256, 128)
+        self.fc2 = nn.Linear(256, 128)
+        self.dropout = nn.Dropout(0.6)
+        self.fc3 = nn.Linear(128, num_classes)
 
-    return train_loader, val_loader, test_loader
+    def forward(self, x):
+        x = self.fc1(x)
+        x = nn.ReLU()(x)
+        x = self.residual_block1(x)
+        x = self.fc2(x)
+        x = nn.ReLU()(x)
+        x = self.dropout(x)
+        x = self.fc3(x)
+        return x
 
-def train_model(model, train_loader, val_loader, num_epochs, criterion, optimizer):
+def train_model(model, train_loader, val_loader, num_epochs, criterion, optimizer, scheduler, patience=5, save_path="best_model.pth"):
     model.to(device)
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+
+    best_val_loss = float('inf')
+    early_stop_counter = 0
 
     for epoch in range(num_epochs):
+        # Training
         model.train()
         running_loss = 0.0
         correct = 0
         total = 0
 
-        for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
+        for keypoints, labels in train_loader:
+            keypoints, labels = keypoints.to(device), labels.to(device)
             optimizer.zero_grad()
-            outputs = model(inputs)
+
+            outputs = model(keypoints)
             loss = criterion(outputs, labels)
+
+            if torch.isnan(loss) or torch.isinf(loss):
+                print("NaN 또는 Inf 감지됨, 학습 무시.")
+                continue
+
             loss.backward()
             optimizer.step()
 
@@ -126,69 +123,90 @@ def train_model(model, train_loader, val_loader, num_epochs, criterion, optimize
             correct += (predicted == labels).sum().item()
 
         train_acc = correct / total
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss:.4f}, Train Accuracy: {train_acc:.4f}")
-        validate_model(model, val_loader, criterion)
+        train_losses.append(running_loss / len(train_loader))
+        train_accuracies.append(train_acc)
+        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {running_loss:.4f}, Train Accuracy: {train_acc:.4f}")
 
-    print("Training complete!")
+        # Validation
+        model.eval()
+        val_loss = 0.0
+        correct = 0
+        total = 0
 
-def validate_model(model, val_loader, criterion):
-    model.eval()
-    running_loss = 0.0
-    correct = 0
-    total = 0
+        with torch.no_grad():
+            for keypoints, labels in val_loader:
+                keypoints, labels = keypoints.to(device), labels.to(device)
+                outputs = model(keypoints)
+                loss = criterion(outputs, labels)
 
-    with torch.no_grad():
-        for inputs, labels in val_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            running_loss += loss.item()
+                if torch.isnan(loss) or torch.isinf(loss):
+                    print("NaN detected in validation loss")
+                    continue
 
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+                val_loss += loss.item()
+                _, predicted = torch.max(outputs, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
 
-    val_acc = correct / total
-    print(f"Validation Loss: {running_loss:.4f}, Validation Accuracy: {val_acc:.4f}")
+        val_acc = correct / total
+        val_losses.append(val_loss / len(val_loader))
+        val_accuracies.append(val_acc)
+        print(f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc:.4f}")
 
-def test_model(model, test_loader):
-    model.eval()
-    all_labels = []
-    all_preds = []
+        # Early Stopping & 모델 저장
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            early_stop_counter = 0
+            torch.save(model, save_path)
+            print(f"모델 저장됨: {save_path}")
+        else:
+            early_stop_counter += 1
+            if early_stop_counter >= patience:
+                print("Early stopping triggered.")
+                break
 
-    with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs, 1)
-            all_labels.extend(labels.cpu().numpy())
-            all_preds.extend(predicted.cpu().numpy())
+        # Scheduler step
+        scheduler.step()
 
-    print("Test Classification Report:")
-    print(classification_report(all_labels, all_preds, target_names=list(behavior_classes.values())))
+    # 손실 및 정확도 시각화
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.title('Loss Curve')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(train_accuracies, label='Train Accuracy')
+    plt.plot(val_accuracies, label='Validation Accuracy')
+    plt.title('Accuracy Curve')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.show()
 
 if __name__ == "__main__":
-    train_file = "data/split_data/annotations_train.csv"
-    val_file = "data/split_data/annotations_validation.csv"
-    test_file = "data/split_data/annotations_test.csv"
-
+    train_csv = "data/split_data/annotations_train.csv"
+    val_csv = "data/split_data/annotations_validation.csv"
     num_epochs = 20
     batch_size = 32
-    learning_rate = 0.001
+    learning_rate = 1e-5
+    save_path = "best_model.pth"
 
-    train_loader, val_loader, test_loader = load_data(train_file, val_file, test_file, batch_size)
+    train_loader = DataLoader(KeypointDataset(train_csv), batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(KeypointDataset(val_csv), batch_size=batch_size, shuffle=False)
 
-    input_dim = 2
-    num_joints = 15
+    keypoint_columns = [col for col in pd.read_csv(train_csv).columns if col.startswith("x") or col.startswith("y")]
+    input_size = len(keypoint_columns)
     num_classes = len(behavior_classes)
-    num_frames = 30
 
-    model = STGCN(in_channels=input_dim, num_joints=num_joints, num_classes=num_classes, num_frames=num_frames)
+    model = KeypointModel(input_size, num_classes)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
     print("Training model...")
-    train_model(model, train_loader, val_loader, num_epochs, criterion, optimizer)
-
-    print("Testing model...")
-    test_model(model, test_loader)
+    train_model(model, train_loader, val_loader, num_epochs, criterion, optimizer, scheduler, patience=5, save_path=save_path)

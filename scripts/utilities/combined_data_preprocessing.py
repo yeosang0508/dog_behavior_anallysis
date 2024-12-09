@@ -80,11 +80,21 @@ def split_dataset_with_ros(data, output_folder):
     features = train_data[keypoints_columns]
     labels = train_data['behavior_class']
 
+    # 오버샘플링 전 다른 열 저장
+    other_columns = train_data.drop(columns=keypoints_columns + ['behavior_class'])
+
+    # 오버샘플링 진행
     features_resampled, labels_resampled = ros.fit_resample(features, labels)
 
     # Resampled 데이터 합치기
     train_data_resampled = pd.DataFrame(features_resampled, columns=keypoints_columns)
     train_data_resampled['behavior_class'] = labels_resampled
+
+    # 오버샘플링된 데이터에 나머지 열 병합
+    resampled_indices = ros.sample_indices_
+    resampled_other_columns = other_columns.iloc[resampled_indices].reset_index(drop=True)
+    train_data_resampled = pd.concat([train_data_resampled, resampled_other_columns], axis=1)
+
 
     print(f"Train size (after oversampling): {len(train_data_resampled)}")
     print(f"클래스 비율 (훈련, after oversampling): \n{train_data_resampled['behavior_class'].value_counts(normalize=True)}")
