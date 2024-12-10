@@ -1,63 +1,52 @@
 import pandas as pd
-import numpy as np
 import torch
-from torch_geometric.data import Data
 from torch.utils.data import Dataset
-from sklearn.model_selection import train_test_split
+import numpy as np
 
-# 관절 수 및 관절 연결 정의
-num_nodes = 15
-edges = [
-    (0, 1), (0, 3), (2, 3), (3, 4), (4, 5),
-    (4, 6), (5, 7), (6, 8), (4, 13), (13, 9),
-    (13, 10), (13, 14), (9, 11), (10, 12)
-]
-edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-
-class KeypointDataset(Dataset):
-    def __init__(self, csv_file):
+class BehaviorDataset(Dataset):
+    def __init__(self, csv_file, num_frames=30, transform=None):
+        """
+        행동 데이터셋 클래스
+        Args:
+            csv_file: 행동 데이터를 포함한 CSV 파일 경로
+            num_frames: 사용할 프레임 수
+            transform: 데이터 변환 함수 (사용하지 않음)
+        """
         self.data = pd.read_csv(csv_file)
+        self.transform = transform
+        self.num_frames = num_frames
 
-        # 결측값 처리
-        self.data.fillna(0, inplace=True)
+        # 관절 데이터 열 이름 정의
+        self.joint_columns = [
+            "x1", "y1", "x3", "y2", "x5", "y3", "x7", "y4", "x9", "y5",
+            "x11", "y6", "x13", "y7", "x15", "y8", "x17", "y9", "x19", "y10",
+            "x21", "y11", "x23", "y12", "x25", "y13", "x27", "y14", "x29", "y15"
+        ]
 
-        # 라벨 및 키포인트 데이터 추출
-        self.labels = self.data['label'].values
-        self.keypoints = self.data.drop(columns=['label', 'frame_number']).values.astype(float)
+        # 관절 데이터 읽기 및 변환
+        skeleton_data = self.data[self.joint_columns].values.reshape(-1, 15, 2)  # (samples, joints, 2)
+        self.skeleton_data = np.expand_dims(skeleton_data, axis=2).repeat(num_frames, axis=2)  # (samples, joints, frames, 2)
 
-        # 데이터 전처리
-        self.keypoints = self.preprocess_keypoints(self.keypoints, num_nodes)
-
-    def preprocess_keypoints(self, keypoints, num_nodes):
-        expected_size = num_nodes * 2
-        processed_keypoints = []
-        for data in keypoints:
-            if len(data) > expected_size:
-                data = data[:expected_size]  # 초과분 제거
-            elif len(data) < expected_size:
-                data = np.pad(data, (0, expected_size - len(data)), mode='constant')  # 부족분 패딩
-            processed_keypoints.append(data)
-        return np.array(processed_keypoints)
+        # 라벨 매핑
+        label_mapping = {label: idx for idx, label in enumerate(self.data['label'].unique())}
+        self.labels = self.data['label'].map(label_mapping).values
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.skeleton_data)
 
     def __getitem__(self, idx):
-        # 키포인트 및 라벨 데이터 로드
-        keypoint_data = self.keypoints[idx].reshape(num_nodes, 2)  # (x, y) 좌표
-        label = self.labels[idx]
+        """
+        데이터 반환
+        Args:
+            idx: 데이터 인덱스
+        Returns:
+            skeletons: (batch_size, in_channels, frames, joints)
+            label: 행동 라벨
+        """
+        # (samples, joints, frames, 2) -> (batch, in_channels, frames, joints)
+        skeleton = torch.tensor(self.skeleton_data[idx], dtype=torch.float32)  # (joints, frames, 2)
+        skeleton = skeleton.permute(2, 1, 0)  # (frames, joints, 2) -> (2, frames, joints)
 
-        # 텐서 변환
-        x = torch.tensor(keypoint_data, dtype=torch.float)
-        y = torch.tensor(label, dtype=torch.long)
+        label = torch.tensor(self.labels[idx], dtype=torch.long)
 
-        # 그래프 데이터 생성
-        graph = Data(x=x, edge_index=edge_index, y=y)
-        return graph
-
-# 데이터 로드
-csv_file = r"data\csv_file\combined.csv"
-dataset = KeypointDataset(csv_file)
-
-# train-test split
-train_data, test_data = train_test_split(dataset, test_size=0.2, random_state=42)
+        return skeleton, label

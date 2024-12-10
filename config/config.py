@@ -11,9 +11,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 데이터 경로 설정
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-TRAIN_CSV = r"data\split_data\annotations_train.csv"
-VAL_CSV = r"data\split_data\annotations_validation.csv"
-TEST_CSV = r"data\split_data\annotations_validation.csv"
+TRAIN_CSV = r"data\csv_file\combined.csv"
+VAL_CSV = r"data\csv_file\combined.csv"
+TEST_CSV = r"data\csv_file\combined.csv"
 
 # 모델 경로 설정
 MODELS_DIR = os.path.join(BASE_DIR, 'models')
@@ -37,7 +37,7 @@ class Config:
                  num_joints: int = 15,
                  num_frames: int = 30,
                  hidden_size = 64,
-                 batch_size: int = 16,
+                 batch_size: int = 2,
                  random_seed: int = 2021,
                  test_ratio: float = 0.1,
                  learning_rate: float = 1e-6,
