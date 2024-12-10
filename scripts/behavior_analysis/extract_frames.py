@@ -76,8 +76,8 @@ def save_bbox_info(bbox_list, output_folder):
         print("바운딩 박스 정보 저장됨: first_frame_bbox.txt")
 
 # 사용 예시
-video_path = "video_test/3.mp4"  # 비디오 파일 경로
-output_folder = "data/video1/3"  # 프레임이 저장될 폴더 경로
+video_path = "video_test/21.mp4"  # 비디오 파일 경로
+output_folder = "data/video1/21"  # 프레임이 저장될 폴더 경로
 
 # FPS 확인
 fps = get_video_fps(video_path)

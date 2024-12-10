@@ -111,3 +111,6 @@ data
 outputs
 samurai
 best_model.pth
+
+mmcv
+best_model2.pth
